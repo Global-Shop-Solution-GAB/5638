@@ -1,0 +1,873 @@
+Program.Sub.ScreenSU.Start
+Gui.F_Forecast..Create
+Gui.F_Forecast..Caption("Forecasting Dashboard")
+Gui.F_Forecast..Size(15360,10515)
+Gui.F_Forecast..MinX(15360)
+Gui.F_Forecast..MinY(10515)
+Gui.F_Forecast..Position(0,0)
+Gui.F_Forecast..BackColor(-2147483633)
+Gui.F_Forecast..MousePointer(0)
+Gui.F_Forecast..Event(UnLoad,F_Forecast_UnLoad)
+Gui.F_Forecast..Event(Resize,F_Forecast_Resize)
+Gui.F_Forecast.picGSSLogo.Create(PictureBox)
+Gui.F_Forecast.picGSSLogo.Size(4125,960)
+Gui.F_Forecast.picGSSLogo.Position(5550,45)
+Gui.F_Forecast.picGSSLogo.Event(DblClick,picGSSLogo_DblClick)
+Gui.F_Forecast.pbStatus.Create(ProgressBar)
+Gui.F_Forecast.pbStatus.Visible(False)
+Gui.F_Forecast.pbStatus.Size(2055,255)
+Gui.F_Forecast.pbStatus.Position(75,375)
+Gui.F_Forecast.lblStatus.Create(Label,"Loading Order Data....",False,1965,255,0,75,135,True,0,"Arial",8,-986896,0)
+Gui.F_Forecast.frameCutoff.Create(Frame)
+Gui.F_Forecast.frameCutoff.Size(3435,600)
+Gui.F_Forecast.frameCutoff.Position(11655,60)
+Gui.F_Forecast.frameCutoff.Caption("Starting Fiscal Year and GL Period")
+Gui.F_Forecast.frameCutoff.Anchor(9)
+Gui.F_Forecast.ddlPeriods.Create(DropDownList)
+Gui.F_Forecast.ddlPeriods.Size(1485,330)
+Gui.F_Forecast.ddlPeriods.Position(1905,195)
+Gui.F_Forecast.ddlPeriods.Parent("frameCutoff")
+Gui.F_Forecast.ddlYear.Create(DropDownList)
+Gui.F_Forecast.ddlYear.Size(1485,330)
+Gui.F_Forecast.ddlYear.Position(105,195)
+Gui.F_Forecast.ddlYear.Parent("frameCutoff")
+Gui.F_Forecast.GsGCForecast.Create(GsGridControl)
+Gui.F_Forecast.GsGCForecast.Size(15000,8685)
+Gui.F_Forecast.GsGCForecast.Position(60,1170)
+Gui.F_Forecast.GsGCForecast.Event(CellValueChanged,GsGcForecast_CellValueChanged)
+Gui.F_Forecast.GsGCForecast.Anchor(15)
+Gui.F_Forecast.cmdRefresh.Create(Button)
+Gui.F_Forecast.cmdRefresh.Size(510,375)
+Gui.F_Forecast.cmdRefresh.Position(14550,705)
+Gui.F_Forecast.cmdRefresh.Caption("REFRESH")
+Gui.F_Forecast.cmdRefresh.Anchor(9)
+Gui.F_Forecast.cmdRefresh.Event(Click,cmdRefresh_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+	V.Global.sDateNow.Declare
+	v.global.iTwoYearsPrior.Declare
+	v.global.iPreviousYear.Declare
+	v.Global.bScreenLoaded.Declare(boolean,False)
+Program.External.Include.Library("PPT_Canny.lib")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'	Author: Daniel Duncan
+'	Customer: Sherwood Industried Ltd.
+'	Program Name: Forecasting Dashboard
+'	Date Started: 8/16/2019
+'	Description: Loads shipment history from two fiscal years prior to current date, plus the supply and demand values for the next 12 GL periods
+'	Quote: 
+'	GAP: 5638
+	F.Intrinsic.Control.Try
+		V.Local.sError.Declare	
+		v.Local.sIcon.Declare
+		V.Local.sGssLogo.Declare
+		V.Local.bGroup.Declare
+		
+		F.Intrinsic.String.Build("{0}\ART\gss2.ico",V.Caller.GlobalDir,v.Local.sIcon)		
+		F.Intrinsic.String.Build("{0}\ART\GAB_GSS_Logo_Green_Dash.png",V.Caller.GlobalDir,V.Local.sGssLogo)
+		gui.F_Forecast.picGSSLogo.Picture(v.Local.sGssLogo)
+		gui.F_Forecast..Icon(V.Local.sIcon)
+		F.Intrinsic.Control.CallSub(GetGLPeriods)
+		f.ODBC.Connection!con.opencompanyconnection
+		F.Intrinsic.Control.CallSub(SetContextMenus)
+		F.Intrinsic.Control.BlockEvents
+		
+		F.Intrinsic.Control.CallSub(loaddtall)
+		f.ODBC.Connection!con.Close
+		F.Intrinsic.Control.UnBlockEvents
+		F.Intrinsic.Control.CallSub(Deserialize)
+		
+		gui.F_Forecast..Show
+	
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+'-----FORM EVENTS---------
+Program.Sub.F_Forecast_Resize.Start
+	F.Intrinsic.Control.Try
+		V.Local.sError.Declare
+		V.Local.iX.Declare
+		
+		F.Intrinsic.Math.Div(V.Screen.F_Forecast.Width,2,V.Local.iX)
+		F.Intrinsic.Math.Sub(V.Local.iX,2000,V.Local.iX)
+		gui.F_Forecast.picGSSLogo.Position(V.Local.iX,45)
+	
+		'Let Form grow larger than 15375, but not lower
+		F.Intrinsic.Control.If(V.Screen.F_Forecast.Width,<,15375)
+			gui.F_Forecast..Size(15375,V.Screen.F_Forecast.Height)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	F.Intrinsic.Control.EndTry
+Program.Sub.F_Forecast_Resize.End
+
+Program.Sub.picGSSLogo_DblClick.Start
+	F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	
+	F.Intrinsic.Task.ShellExec(0,"Open","http://www.globalshopsolutions.com/login-customer","","",0)
+	
+	F.Intrinsic.Control.Catch
+		F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.End 
+	F.Intrinsic.Control.EndTry
+Program.Sub.picGSSLogo_DblClick.End
+
+Program.Sub.GsGcForecast_CellValueChanged.Start
+	'SAVES NOTES TO A CUSTOM TABLE FOR THIS PROJECT
+	F.Intrinsic.Control.Try
+		V.Local.sSQL.Declare(string)
+		v.Local.bExists.Declare(boolean)
+		v.Local.sNoteText.Declare(string)
+		v.Local.sPart.Declare(string)
+		v.Local.sPeriodIndex.Declare(string)
+		v.Local.iUnderScorePos.Declare(long)
+		v.Local.iStopChar.Declare(long)		
+	
+		f.Intrinsic.String.IsInString(V.Args.Column,"NOTES",True,v.Local.bExists)
+		f.Intrinsic.Control.If(v.Local.bExists)
+			gui.F_Forecast.GsGCForecast.GetCellValueByColumnName("gvAll",V.Args.Column,V.Args.RowIndex,v.Local.sNoteText)
+			gui.F_Forecast.GsGCForecast.GetCellValueByColumnName("gvAll","PART",V.Args.RowIndex,v.Local.sPart)
+			
+			'Get the period from dtPeriods using the grid's column name
+			f.Intrinsic.String.Instr(v.Args.column,"_",1,v.Local.iUnderScorePos)
+			f.Intrinsic.Math.Sub(v.Local.iUnderScorePos,7,v.Local.iStopChar)
+			f.Intrinsic.String.Mid(v.Args.column,7,v.Local.iStopChar,v.Local.sPeriodIndex)
+			f.Intrinsic.Math.Sub(v.Local.sPeriodIndex,1,v.Local.sPeriodIndex)
+			f.Intrinsic.String.Build("delete from gcg_5638_ordernotes where part='{0}' and fiscal_year='{1}' and period='{2}';",v.Local.sPart,v.DataTable.dtPeriods(v.Local.sPeriodIndex).Start_Year!FieldValTrim,v.DataTable.dtPeriods(v.Local.sPeriodIndex).Period!FieldValTrim,v.Local.sSQL)
+			f.ODBC.Connection!con.opencompanyconnection
+				f.ODBC.Connection!con.execute(v.Local.sSQL)
+				f.Intrinsic.String.Build("insert into gcg_5638_ordernotes (part, fiscal_year, period, note) values ('{0}','{1}','{2}','{3}');",v.Local.sPart,v.DataTable.dtPeriods(v.Local.sPeriodIndex).Start_Year!FieldValTrim,v.DataTable.dtPeriods(v.Local.sPeriodIndex).Period!FieldValTrim,v.Local.sNoteText,v.Local.sSQL)
+				f.ODBC.Connection!con.execute(v.Local.sSQL)
+			f.ODBC.Connection!con.Close
+		F.Intrinsic.Control.EndIf
+
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.GsGcForecast_CellValueChanged.End
+
+Program.Sub.cmdRefresh_Click.Start
+	F.Intrinsic.Control.Try	
+		F.Intrinsic.Control.CallSub(Serialize)
+		
+		gui.F_Forecast..Enabled(False)
+		gui.F_Forecast.GsGCForecast.visible(False)
+		F.Intrinsic.Control.BlockEvents
+		f.ODBC.Connection!con.opencompanyconnection
+		
+		f.Intrinsic.Control.CallSub(loadDTAll)
+		f.ODBC.Connection!con.close
+		F.Intrinsic.Control.UnBlockEvents
+		gui.F_Forecast.GsGCForecast.visible(True)
+		gui.F_Forecast..Enabled(True)
+		F.Intrinsic.Control.CallSub(Deserialize)
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.cmdRefresh_Click.End
+
+Program.Sub.F_Forecast_UnLoad.Start
+	F.Intrinsic.Control.Try
+		V.Local.sError.Declare
+	
+		F.Intrinsic.Control.CallSub(Serialize)
+		
+		f.Intrinsic.Control.If(v.ODBC!con.State, =, 1)
+			f.ODBC.Connection!con.Close
+		f.Intrinsic.Control.EndIf
+		
+		F.Intrinsic.Control.End
+	
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.F_Forecast_UnLoad.End
+
+'-----DATA MOVEMENT-----
+Program.Sub.GetGLPeriods.Start
+	f.Intrinsic.Control.Try
+		v.Local.sSQL.Declare(string)
+		v.Local.sRet.Declare(string)
+		v.Local.sYear.Declare(string)
+		v.Local.iCnt.Declare(long)
+		v.Local.sDate.Declare
+		v.Local.sNewDate.Declare
+		v.Local.sMonth.Declare
+		v.Local.sDay.Declare
+		v.Local.dDate.Declare(date)
+		
+		f.Intrinsic.Date.DateAdd("m",-1,v.Ambient.Now,v.Local.dDate)
+		f.Intrinsic.String.DateString(v.Local.dDate,v.Local.sDate)
+		f.Intrinsic.String.Left(v.Local.sDate,4,v.Local.sYear)
+		f.Intrinsic.String.Right(v.Local.sDate,2,v.Local.sDay)
+		f.Intrinsic.String.Mid(v.Local.sDate,5,2,v.Local.sMonth)
+		f.Intrinsic.String.Build("{0}-{1}-{2}",v.Local.sYear,v.local.sMonth,v.Local.sDay,v.global.sDateNow)
+		
+		v.Local.sSQL.Set("select distinct start_year from v_gl_calendar order by start_year;")
+		f.ODBC.Connection!con.opencompanyconnection
+			f.Data.DataTable.CreateFromSQL("dtGLPeriods","con",v.Local.sSQL)
+		f.ODBC.Connection!con.Close
+		f.Intrinsic.Control.If(v.DataTable.dtGLPeriods.RowCount,>,0)
+			f.Intrinsic.Control.For(v.Local.iCnt,0,v.DataTable.dtGLPeriods.RowCount--,1)
+				gui.F_Forecast.ddlYear.AddItem(v.DataTable.dtGLPeriods(v.Local.iCnt).Start_Year!FieldValTrim)
+			f.Intrinsic.Control.Next(v.Local.iCnt)
+		f.Intrinsic.Control.EndIf
+		f.Data.DataTable.Close("dtGLPeriods")
+		
+		v.Local.sSQL.Set("select distinct period from v_gl_calendar order by period;")
+		f.ODBC.Connection!con.opencompanyconnection
+			f.Data.DataTable.CreateFromSQL("dtGLPeriods","con",v.Local.sSQL)
+		f.ODBC.Connection!con.Close
+		f.Intrinsic.Control.If(v.DataTable.dtGLPeriods.RowCount,>,0)
+			f.Intrinsic.Control.For(v.Local.iCnt,0,v.DataTable.dtGLPeriods.RowCount--,1)
+				gui.F_Forecast.ddlPeriods.AddItem(v.DataTable.dtGLPeriods(v.Local.iCnt).Period!FieldValTrim)
+			f.Intrinsic.Control.Next(v.Local.iCnt)
+		f.Intrinsic.Control.EndIf
+		f.Data.DataTable.Close("dtGLPeriods")
+				
+		f.Intrinsic.String.Build("select start_year, period from v_gl_calendar where beg_date <= '{0}' and end_date >= '{0}';",v.global.sDateNow,v.Local.sSQL)
+		f.ODBC.Connection!con.opencompanyconnection
+			f.ODBC.Connection!con.executeandreturn(v.Local.sSQL,v.Local.sRet)
+		f.ODBC.Connection!con.Close
+		
+		f.Intrinsic.Control.If(v.local.sRet,!=,"")
+			f.Intrinsic.String.Split(v.Local.sRet,"*!*",v.Local.sRet)
+			gui.F_Forecast.ddlYear.Text(v.Local.sRet(0))
+			gui.F_Forecast.ddlPeriods.Text(v.Local.sRet(1))
+		f.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+		f.Intrinsic.Control.End
+	f.Intrinsic.Control.EndTry
+Program.Sub.GetGLPeriods.End
+
+Program.Sub.SetContextMenus.Start
+	F.Intrinsic.Control.Try
+		V.Local.sError.Declare	
+		
+		gui.F_Forecast..ContextMenuCreate("ctxAll")
+		gui.F_Forecast.GsGCForecast.ContextMenuAttach("ctxAll")
+		gui.F_Forecast..ContextMenuAddItem("ctxAll","Refresh",0,"Refresh")
+		gui.F_Forecast..ContextMenuAddItem("ctxAll","Export",0,"Export")
+		gui.F_Forecast..ContextMenuAddItem("ctxAll","ResetColumns",0,"Reset Columns")
+		
+		gui.F_Forecast..ContextMenuSetItemEventHandler("ctxAll","Refresh","MenuClickRefresh")
+		gui.F_Forecast..ContextMenuSetItemEventHandler("ctxAll","Export","MenuClickExport")
+		gui.F_Forecast..ContextMenuSetItemEventHandler("ctxAll","ResetColumns","MenuClickResetColumns")	
+		
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.SetContextMenus.End
+
+Program.Sub.ErrorMsg.Start
+	v.Local.sError.Declare
+	
+	'Closes ODBC connection, default to connection : "con"
+	f.Intrinsic.Control.If(v.ODBC!con.State, =, 1)
+		f.ODBC.Connection!con.Close
+	f.Intrinsic.Control.EndIf
+	
+	'Generic Error message.
+	f.Intrinsic.String.Build("Project GCG_5638_ForecastingDashboard.g2u {0}{0}Subroutine: {1}{0}Error: {2} with Description: {3}", v.Ambient.NewLine, v.Args.CurrentSub, v.Ambient.ErrorNumber, v.Ambient.ErrorDescription, v.Local.sError)
+	f.Intrinsic.UI.Msgbox(v.Local.sError)
+Program.Sub.ErrorMsg.End
+
+Program.Sub.loadDTAll.Start
+	F.Intrinsic.Control.Try
+		V.Local.sError.Declare
+		V.Local.iDays.Declare
+		V.Local.dCutoff.Declare
+		V.Local.sFilter.Declare
+		v.Local.dMin.Declare(date)
+		v.Local.sMin.Declare
+		v.Local.dRange.Declare(date)
+		v.Local.sRange.Declare
+		v.Local.iNegRange.Declare
+		v.Local.sSQL.Declare
+		V.Local.sYear.Declare(string)
+		v.Local.sYearTwoDigit.Declare(string)
+		v.Local.iCnt.Declare(long)
+		v.Local.iColNum.Declare(long)
+		v.Local.sColName.Declare(string)
+		v.Local.sColNameSecond.Declare(string)
+		v.Local.sColCaption.Declare(string)
+		v.Local.bValid.Declare(boolean)
+		V.Local.sExpression.Declare(string)
+		v.Local.sDate.Declare
+		v.Local.sMonth.Declare
+		v.Local.sDay.Declare
+		v.Local.sNewBegDate.Declare
+		v.Local.sNewEndDate.Declare
+	
+		gui.F_Forecast.lblStatus.Visible(True)
+		gui.F_Forecast.pbStatus.Visible(True)
+		gui.F_Forecast.pbStatus.Min(0)
+		gui.F_Forecast.pbStatus.Max(100)
+		gui.F_Forecast.pbStatus.Value(15)
+		
+		'Sub is writing all records to dtAllTemp and totaling data, then merging that dataset with dtAll, which has identical structure but no data.  dtAll is what will be bound to the gridview, so it cannot be closed.		
+			
+		F.Intrinsic.Control.If(V.DataTable.dtAllTemp.Exists)	
+			F.Data.Datatable.Close("dtAllTemp")
+		F.Intrinsic.Control.EndIf
+		f.Intrinsic.Control.If(v.DataTable.dtPeriods.Exists)
+			f.Data.DataView.Close("dtPeriods","dvPeriods")
+			f.Data.DataTable.Close("dtPeriods")
+		f.Intrinsic.Control.EndIf
+		
+		f.Intrinsic.String.right(v.Screen.F_Forecast!ddlYear.Text,4,v.Local.sYear)
+		
+		v.Local.sSQL.Set("select ltrim(rtrim(a.part)) as Part, ltrim(rtrim(a.description)) as Description, ltrim(rtrim(b.TEXT)) as ExtraDescription, a.product_line, convert(0,sql_FLOAT) as SHIP_2YRSPRIOR, convert(0,sql_FLOAT) AS SHIP_1YRPRIOR, convert(0,sql_FLOAT) AS ORDERS_CURRENTYR, convert(0,sql_FLOAT) AS SHIP_CURRENTYR, convert(0,sql_FLOAT) AS ON_HOLD, convert(0,sql_FLOAT) AS OPEN_ORDERS, a.qty_onhand AS IN_STOCK, convert(0,sql_FLOAT) AS FORECAST from v_inventory_mstr a left join V_INV_EXTRA_TEXT b on a.part=b.part order by a.product_line, a.part")
+		F.Data.DataTable.CreateFromSQL("dtAllTemp","con",v.Local.sSQL,True)
+		F.Intrinsic.Control.If(V.DataTable.dtAll.Exists,=,False)
+			v.Local.sSQL.Set("select '' as Part, '' as Description, '' as ExtraDescription, a.product_line, convert(0,sql_FLOAT) as SHIP_2YRSPRIOR, convert(0,sql_FLOAT) AS SHIP_1YRPRIOR, convert(0,sql_FLOAT) AS ORDERS_CURRENTYR, convert(0,sql_FLOAT) AS SHIP_CURRENTYR, convert(0,sql_FLOAT) AS ON_HOLD, convert(0,sql_FLOAT) AS OPEN_ORDERS, a.qty_onhand AS IN_STOCK, convert(0,sql_FLOAT) AS FORECAST, convert(0,sql_FLOAT) AS AVAILABILITY, convert(0,sql_FLOAT) AS PERIOD1_SUPPLY, convert(0,sql_FLOAT) AS PERIOD1_DEMAND, convert(0,sql_FLOAT) AS PERIOD1_REMAIN, '' AS PERIOD1_NOTES, convert(0,sql_FLOAT) AS PERIOD2_SUPPLY, convert(0,sql_FLOAT) AS PERIOD2_DEMAND, convert(0,sql_FLOAT) AS PERIOD2_REMAIN, '' AS PERIOD2_NOTES, convert(0,sql_FLOAT) AS PERIOD3_SUPPLY, convert(0,sql_FLOAT) AS PERIOD3_DEMAND, convert(0,sql_FLOAT) AS PERIOD3_REMAIN, '' AS PERIOD3_NOTES, convert(0,sql_FLOAT) AS PERIOD4_SUPPLY, convert(0,sql_FLOAT) AS PERIOD4_DEMAND, convert(0,sql_FLOAT) AS PERIOD4_REMAIN, '' AS PERIOD4_NOTES, convert(0,sql_FLOAT) AS PERIOD5_SUPPLY, convert(0,sql_FLOAT) AS PERIOD5_DEMAND, convert(0,sql_FLOAT) AS PERIOD5_REMAIN, '' AS PERIOD5_NOTES, convert(0,sql_FLOAT) AS PERIOD6_SUPPLY, convert(0,sql_FLOAT) AS PERIOD6_DEMAND, convert(0,sql_FLOAT) AS PERIOD6_REMAIN, '' AS PERIOD6_NOTES, convert(0,sql_FLOAT) AS PERIOD7_SUPPLY, convert(0,sql_FLOAT) AS PERIOD7_DEMAND, convert(0,sql_FLOAT) AS PERIOD7_REMAIN, '' AS PERIOD7_NOTES, convert(0,sql_FLOAT) AS PERIOD8_SUPPLY, convert(0,sql_FLOAT) AS PERIOD8_DEMAND, convert(0,sql_FLOAT) AS PERIOD8_REMAIN, '' AS PERIOD8_NOTES, convert(0,sql_FLOAT) AS PERIOD9_SUPPLY, convert(0,sql_FLOAT) AS PERIOD9_DEMAND, convert(0,sql_FLOAT) AS PERIOD9_REMAIN, '' AS PERIOD9_NOTES, convert(0,sql_FLOAT) AS PERIOD10_SUPPLY, convert(0,sql_FLOAT) AS PERIOD10_DEMAND, convert(0,sql_FLOAT) AS PERIOD10_REMAIN, '' AS PERIOD10_NOTES, convert(0,sql_FLOAT) AS PERIOD11_SUPPLY, convert(0,sql_FLOAT) AS PERIOD11_DEMAND, convert(0,sql_FLOAT) AS PERIOD11_REMAIN, '' AS PERIOD11_NOTES, convert(0,sql_FLOAT) AS PERIOD12_SUPPLY, convert(0,sql_FLOAT) AS PERIOD12_DEMAND, convert(0,sql_FLOAT) AS PERIOD12_REMAIN, '' AS PERIOD12_NOTES from v_inventory_mstr a left join V_INV_EXTRA_TEXT b on a.part=b.part order by a.product_line, a.part")
+			F.Data.DataTable.CreateFromSQL("dtAll","con",v.Local.sSQL,True)
+		F.Intrinsic.Control.EndIf
+		
+		
+		'Get the forecast work orders still open
+		f.Intrinsic.String.Build("select ltrim(rtrim(part)) AS PART, sum(qty_order) as QTY_ORDERED from v_forecast_header;",v.Local.sYear,v.Local.sSQL)
+		f.Data.Dictionary.CreateFromSQL("dictForecasts","con","select part, sum(qty_order) as QTY_ORDERED from v_forecast_header group by part;")
+		f.Data.Dictionary.SetDefaultReturn("dictForecasts",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictForecasts","Part","FORECAST")
+		f.Data.Dictionary.Close("dictForecasts")
+		
+		'Get the amount in ONHOLD wip bin
+		F.Data.Dictionary.CreateFromSQL("dictOnHold","con","select ltrim(rtrim(part)) AS PART, sum(quantity) as Qty_Total from v_item_master where bin='ONHOLD' group by part ORDER BY PART;")
+		f.Data.Dictionary.SetDefaultReturn("dictOnHold",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictOnHold","Part","ON_HOLD")
+		f.Data.Dictionary.Close("dictOnHold")
+		
+		'Get the open orders and fill in values.  (Create datatable first, since we will need it later)
+		f.Data.datatable.CreateFromSQL("dtOpenOrders","con","select ltrim(rtrim(part)) AS Part, sum(qty_BO) as QTY_ORDERED from v_order_lines group by part;")
+		F.Data.DataView.Create("dtOpenOrders","dvOpenOrders")
+		f.Data.Dictionary.createfromdatatable("dictOpenOrders","dtOpenOrders","Part","QTY_ORDERED")
+		f.Data.Dictionary.SetDefaultReturn("dictopenorders",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictopenorders","Part","OPEN_ORDERS")
+		f.Data.Dictionary.Close("dictOpenOrders")
+		
+		'Add the AVAILABILITY column (on hand minus open orders)		
+		f.Data.DataTable.AddExpressionColumn("dtAllTemp","AVAILABILITY","float","IN_STOCK-OPEN_ORDERS")
+		
+		'Get the next 12 periods based on the year and period selected
+		f.Intrinsic.String.Build("select top 12 beg_date, end_date, START_YEAR, PERIOD, MONTH(BEG_DATE) AS MONTHNO, YEAR(BEG_DATE) AS YEARNO from v_gl_calendar where beg_date >= (select beg_date from v_gl_calendar where start_year='{0}' and period='{1}') and period != '13' order by start_year, period;", v.Screen.F_Forecast!ddlYear.Text,v.Screen.F_Forecast!ddlPeriods.Text,v.Local.sSQL)
+		F.Data.DataTable.CreateFromSQL("dtPeriods","con",v.Local.sSQL,True)
+		f.Data.DataView.Create("dtPeriods","dvPeriods")
+		
+		'Get the start and end date for the fiscal year two years ago
+		f.Intrinsic.Math.Sub(v.Screen.F_Forecast!ddlYear.Text,2,v.global.iTwoYearsPrior)
+		f.Intrinsic.String.Build("select (select beg_date from v_gl_calendar where start_year='{0}' and period='01') as BegDate, (select end_date from v_gl_calendar where start_year='{0}' and period='12') as EndDate, {0} as FiscalYear",v.global.iTwoYearsPrior,v.Local.sSQL)
+		f.data.DataTable.CreateFromSQL("dtFiscalYear2Yr","con",v.Local.sSQL)
+		
+		'Get the start and end date for the fiscal year one year ago
+		f.Intrinsic.Math.Sub(v.Screen.F_Forecast!ddlYear.Text,1,v.global.iPreviousYear)
+		f.Intrinsic.String.Build("select (select convert(beg_date,sql_date) from v_gl_calendar where start_year='{0}' and period='01') as BegDate, (select convert(end_date,sql_date) from v_gl_calendar where start_year='{0}' and period='12') as EndDate, {0} as FiscalYear",v.global.iPreviousYear,v.Local.sSQL)
+		f.data.DataTable.CreateFromSQL("dtFiscalYear1Yr","con",v.Local.sSQL)
+		
+		'Build order history table: 
+		'Delete all from table
+		f.ODBC.Connection!con.execute("delete from gcg_5638_tmpship;")
+		'insert order hist records from the two fiscal years before the selected period forward
+'		Function.Intrinsic.Debug.InvokeDebugger
+'		Function.Intrinsic.Debug.Stop
+		
+		f.Intrinsic.Date.IsDate(v.DataTable.dtFiscalYear2Yr(0).BegDate!FieldValTrim,v.Local.bValid)
+		f.Intrinsic.Control.If(v.Local.bValid)
+			'Must change date format in GL Cal ("MM/DD/YYYY") to "YYYY-MM-DD"
+			'f.Intrinsic.String.DateString(v.DataTable.dtFiscalYear2Yr(0).BegDate!FieldValTrim,v.Local.sDate)
+			f.Intrinsic.String.Split(v.DataTable.dtFiscalYear2Yr(0).BegDate!FieldValTrim,"/",v.Local.sDate)
+			f.Intrinsic.String.LPad(v.Local.sDate(0),"0",2,v.Local.sMonth)
+			f.Intrinsic.String.LPad(v.Local.sDate(1),"0",2,v.Local.sDay)
+			f.Intrinsic.String.LPad(v.Local.sDate(2),"0",4,v.Local.sYear)
+			f.Intrinsic.String.Build("{0}-{1}-{2}",v.Local.sYear,v.Local.sMonth,v.Local.sDay,v.Local.sNewBegDate)
+			f.Intrinsic.String.Split(v.DataTable.dtFiscalYear2Yr(0).EndDate!FieldValTrim,"/",v.Local.sDate)
+			f.Intrinsic.String.LPad(v.Local.sDate(0),"0",2,v.Local.sMonth)
+			f.Intrinsic.String.LPad(v.Local.sDate(1),"0",2,v.Local.sDay)
+			f.Intrinsic.String.LPad(v.Local.sDate(2),"0",4,v.Local.sYear)
+			f.Intrinsic.String.Build("{0}-{1}-{2}",v.Local.sYear,v.Local.sMonth,v.Local.sDay,v.Local.sNewEndDate)
+			
+			'Get results from two years ago
+			f.Intrinsic.String.Build("insert into gcg_5638_tmpship (part, fiscal_year, qty_shipped) select ltrim(rtrim(part)) AS PART, '{2}', sum(qty_shipped) from v_order_hist_line where date_order_due between '{0}' and '{1}' and part in (select part from v_inventory_mstr) group by part, date_order_due",v.Local.sNewBegDate,v.Local.sNewEndDate,v.DataTable.dtFiscalYear2Yr(0).FiscalYear!FieldValTrim,v.Local.sSQL)
+			f.ODBC.Connection!con.execute(v.Local.sSQL)
+		f.Intrinsic.Control.EndIf
+		f.Data.DataTable.Close("dtFiscalYear2Yr")
+			
+		'insert order hist records from the fiscal year before the selected period forward
+		f.Intrinsic.Date.IsDate(v.DataTable.dtFiscalYear1Yr(0).BegDate!FieldValTrim,v.Local.bValid)
+		f.Intrinsic.Control.If(v.Local.bValid)
+			'Must change date format in GL Cal ("MM/DD/YYYY") to "YYYY-MM-DD"
+			'f.Intrinsic.String.DateString(v.DataTable.dtFiscalYear1Yr(0).BegDate!FieldValTrim,v.Local.sDate)
+			f.Intrinsic.String.Split(v.DataTable.dtFiscalYear1Yr(0).BegDate!FieldValTrim,"/",v.Local.sDate)
+			f.Intrinsic.String.LPad(v.Local.sDate(0),"0",2,v.Local.sMonth)
+			f.Intrinsic.String.LPad(v.Local.sDate(1),"0",2,v.Local.sDay)
+			f.Intrinsic.String.LPad(v.Local.sDate(2),"0",4,v.Local.sYear)
+			f.Intrinsic.String.Build("{0}-{1}-{2}",v.Local.sYear,v.Local.sMonth,v.Local.sDay,v.Local.sNewBegDate)
+			f.Intrinsic.String.Split(v.DataTable.dtFiscalYear1Yr(0).EndDate!FieldValTrim,"/",v.Local.sDate)
+			f.Intrinsic.String.LPad(v.Local.sDate(0),"0",2,v.Local.sMonth)
+			f.Intrinsic.String.LPad(v.Local.sDate(1),"0",2,v.Local.sDay)
+			f.Intrinsic.String.LPad(v.Local.sDate(2),"0",4,v.Local.sYear)
+			f.Intrinsic.String.Build("{0}-{1}-{2}",v.Local.sYear,v.Local.sMonth,v.Local.sDay,v.Local.sNewEndDate)
+			
+			f.Intrinsic.String.Build("insert into gcg_5638_tmpship (part, fiscal_year, qty_shipped) select ltrim(rtrim(part)) AS part, '{2}', sum(qty_shipped) from v_order_hist_line where date_order_due between '{0}' and '{1}' and part in (select part from v_inventory_mstr) group by part, date_order_due",v.Local.sNewBegDate,v.Local.sNewEndDate,v.DataTable.dtFiscalYear1Yr(0).FiscalYear!FieldValTrim,v.Local.sSQL)
+			f.ODBC.Connection!con.execute(v.Local.sSQL)
+		f.Intrinsic.Control.EndIf
+		f.Data.DataTable.Close("dtFiscalYear1Yr")
+		
+'		'Insert open shipments
+'		f.ODBC.Connection!con.execute("insert into gcg_5638_tmpship (part, fiscal_year, qty_shipped) select ltrim(rtrim(a.part)) AS PART, (select b.start_year from v_gl_calendar b where b.beg_date <= a.date_item_promise and b.end_date >= a.date_item_promise) as FiscalYear, sum(a.qty_shipped) from v_shipment_lines a where a.part in (select part from v_inventory_mstr) and concat(part,) group by a.part, a.date_item_promise;")
+			
+		'insert manually uploaded shipment history from the custom table
+		f.ODBC.Connection!con.execute("insert into gcg_5638_tmpship (part, fiscal_year, qty_shipped) select ltrim(rtrim(part)) AS PART, fiscal_year, qty_shipped from gcg_5638_shiphistory;")
+				
+		'Finally, pull that into a datatable to be sliced and diced.
+		f.Data.DataTable.CreateFromSQL("dtShipHist","con","select ltrim(rtrim(PART)) as PART, QTY_SHIPPED, FISCAL_YEAR from gcg_5638_tmpship")
+		f.Data.Dataview.Create("dtShipHist","dvShipHist",22)		
+		
+		'Fill ship records from 2 years ago
+		f.Intrinsic.String.Build("Fiscal_Year='{0}'",v.global.iTwoYearsPrior,v.Local.sSQL)
+		f.Data.DataView.SetFilter("dtShipHist","dvShipHist",v.Local.sSQL)
+		f.Data.DataView.ToDataTable("dtShipHist","dvShipHist","dtShipHistTwoYears")
+		f.Data.Dictionary.createfromdatatable("dictShipHistTwoYears","dtShipHistTwoYears","Part","Qty_Shipped")
+		f.Data.Dictionary.SetDefaultReturn("dictShipHistTwoYears",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictShipHistTwoYears","Part","SHIP_2YRSPRIOR")
+		F.Data.Dictionary.Close("dictShipHistTwoYears")
+		F.Data.DataTable.Close("dtShipHistTwoYears")
+		
+		'Fill in ship records from 1 year ago
+		f.Intrinsic.String.Build("Fiscal_Year='{0}'",v.global.iPreviousYear,v.Local.sSQL)
+		f.Data.DataView.SetFilter("dtShipHist","dvShipHist",v.Local.sSQL)
+		f.Data.DataView.ToDataTable("dtShipHist","dvShipHist","dtShipHistOneYear")
+		f.Data.Dictionary.createfromdatatable("dictShipHistOneYear","dtShipHistOneYear","Part","Qty_Shipped")
+		f.Data.Dictionary.SetDefaultReturn("dictShipHistOneYear",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictShipHistOneYear","Part","SHIP_1YRPRIOR")
+		F.Data.Dictionary.Close("dictShipHistOneYear")
+		F.Data.DataTable.Close("dtShipHistOneYear")
+		
+		'Fill in ship records from this year
+		f.Intrinsic.String.Build("Fiscal_Year='{0}'",v.Screen.F_Forecast!ddlYear.Text,v.Local.sSQL)
+		f.Data.DataView.SetFilter("dtShipHist","dvShipHist",v.Local.sSQL)
+		f.Data.DataView.ToDataTable("dtShipHist","dvShipHist","dtShipHistThisYear")
+		f.Data.Dictionary.createfromdatatable("dictShipHistThisYear","dtShipHistThisYear","Part","Qty_Shipped")
+		f.Data.Dictionary.SetDefaultReturn("dictShipHistThisYear",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictShipHistThisYear","Part","SHIP_1YRPRIOR")
+		F.Data.Dictionary.Close("dictShipHistThisYear")
+		F.Data.DataTable.Close("dtShipHistThisYear")
+'		F.Intrinsic.String.Right(V.Screen.F_Forecast!ddlYear.Text,2,v.Local.sYearTwoDigit)
+'		f.Intrinsic.String.Build("SHIP FY {0}",v.Local.sYearTwoDigit,V.Local.sColCaption)
+'		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_CURRENTYR","Caption",v.Local.sColCaption)
+		
+		'Fill in all orders from this year (open & shipped)
+		f.Intrinsic.String.Build("H.Fiscal_Year='{0}'",v.Screen.F_Forecast!ddlYear.Text,v.Local.sSQL)
+		f.Data.Linq.Join("LeftJoin","datatable","dtAllTemp*!*A","datatable","dtOpenOrders*!*O","A.PART=O.PART","datatable","dtShipHist*!*H","A.Part=H.Part","A.Part*!*O.Qty_Ordered*!*H.Qty_Shipped",v.Local.sSQL,"","","dtAllOrders",True)
+		f.Data.DataTable.AddExpressionColumn("dtAllOrders","TotalQty","float","Qty_Ordered+Qty_Shipped")
+		f.Data.Dictionary.createfromdatatable("dictAllOrders","dtAllOrders","Part","TotalQty")
+		f.Data.Dictionary.SetDefaultReturn("dictAllOrders",0)
+		f.Data.DataTable.FillFromDictionary("dtAllTemp","dictAllOrders","Part","ORDERS_CURRENTYR")
+		F.Data.Dictionary.Close("dictAllOrders")
+		F.Data.DataTable.Close("dtAllOrders")
+		f.Data.DataView.Close("dtOpenOrders","dvOpenOrders")
+		f.Data.DataTable.Close("dtOpenOrders")
+		f.Data.DataView.Close("dtShipHist","dvShipHist")
+		f.Data.DataTable.Close("dtShipHist")
+		
+		'Get all notes from the custom order notes table
+		v.Local.sSQL.Set("select ltrim(rtrim(part)) as Part, Fiscal_Year, Period, Note from GCG_5638_ordernotes ORDER BY PART,FISCAL_YEAR;")
+		F.Data.DataTable.CreateFromSQL("dtOrderNotes","con",v.Local.sSQL)
+		f.Data.DataView.Create("dtOrderNotes","dvOrderNotes")
+		
+		'Get all open work order quantities, along with the fiscal year for each one
+		v.Local.sSQL.Set("select ltrim(rtrim(a.part)) as Part, CONVERT(sum(a.qty_order),SQL_FLOAT)-CONVERT(sum(a.qty_completed),SQL_FLOAT) as Qty_Remaining, MONTH(A.DATE_DUE) AS MONTHNO, (select b.start_year from v_gl_calendar b where b.beg_date <= a.date_due and b.end_date >= a.date_due) as Fiscal_Year, (select b.period from v_gl_calendar b where b.beg_date <= a.date_due and b.end_date >= a.date_due) as Period from v_job_header a where a.date_closed='1900-01-01' group by a.part,A.DATE_DUE;")
+		F.Data.DataTable.CreateFromSQL("dtOpenWO","con",v.Local.sSQL)
+		f.Data.DataView.Create("dtOpenWO","dvOpenWO")	
+		
+		'Get all open sales orders, along with the fiscal year for each one
+		f.Data.DataTable.CreateFromSQL("dtOpenSO","con","SELECT ltrim(rtrim(a.part)) as Part, CONVERT(SUM(A.QTY_BO),SQL_FLOAT) AS TOTALQTY, MONTH(a.date_item_prom) AS MONTHNO, (SELECT B.START_YEAR FROM V_GL_CALENDAR B WHERE B.BEG_DATE <= A.DATE_ITEM_PROM AND B.END_DATE >= A.DATE_ITEM_PROM) AS FISCAL_YEAR, (SELECT B.PERIOD FROM V_GL_CALENDAR B WHERE B.BEG_DATE <= A.DATE_ITEM_PROM AND B.END_DATE >= A.DATE_ITEM_PROM) AS PERIOD FROM V_ORDER_LINES A GROUP BY A.PART,A.DATE_ITEM_PROM")
+		f.Data.DataView.Create("dtOpenSO","dvOpenSO")
+		
+		f.Intrinsic.Control.For(v.Local.iCnt,0,v.DataTable.dtPeriods.RowCount--,1)	
+			'Set the column ordinal to use in the column name
+			f.Intrinsic.Math.Add(v.Local.iCnt,1,v.Local.iColNum)
+			
+			F.Intrinsic.String.Build("FISCAL_YEAR='{0}' AND PERIOD='{1}'",V.DataTable.dtPeriods(V.Local.iCnt).Start_Year!FieldValTrim,v.DataTable.dtPeriods(v.Local.iCnt).Period!FieldValTrim,v.Local.sSQL)
+			'F.Intrinsic.String.Build("DATE_DUE BETWEEN '{0}' AND '{1}'",V.DataTable.dtPeriods(V.Local.iCnt).BEG_DATE!FieldValTrim,v.DataTable.dtPeriods(v.Local.iCnt).END_DATE!FieldValTrim,v.Local.sSQL)
+			f.Data.DataView.SetFilter("dtOpenWO","dvOpenWO",v.Local.sSQL)
+			f.Data.DataView.ToDataTable("dtOpenWO","dvOpenWO","dtOpenWOFiltered")
+			f.Data.Dictionary.createfromdatatable("dictOpenWOFiltered","dtOpenWOFiltered","Part","Qty_Remaining")
+			F.Data.Dictionary.SetDefaultReturn("dictOpenWOFiltered",0)
+			
+			'F.Intrinsic.String.Build("DATE_ITEM_PROM BETWEEN '{0}' AND '{1}'",V.DataTable.dtPeriods(V.Local.iCnt).BEG_DATE!FieldValTrim,v.DataTable.dtPeriods(v.Local.iCnt).END_DATE!FieldValTrim,v.Local.sSQL)
+			f.Data.DataView.SetFilter("dtOpenSO","dvOpenSO",v.Local.sSQL)
+			f.Data.DataView.ToDataTable("dtOpenSO","dvOpenSO","dtOpenSOFiltered")
+			f.Data.Dictionary.createfromdatatable("dictOpenSOFiltered","dtOpenSOFiltered","Part","TOTALQTY")
+			F.Data.Dictionary.SetDefaultReturn("dictOpenSOFiltered",0)	
+			
+			'Add supply for the current month.  Supply = WO's due
+			f.Intrinsic.String.Build("PERIOD{0}_SUPPLY",V.Local.iColNum,V.Local.sColNameSecond)
+			f.Data.DataTable.AddColumn("dtAllTemp",v.Local.sColNameSecond,"FLOAT")
+			F.Data.DataTable.FillFromDictionary("dtAllTemp","dictOpenWOFiltered","PART",v.Local.sColNameSecond)
+			F.Data.Dictionary.Close("dictOpenWOFiltered")
+			F.Data.DataTable.Close("dtOpenWOFiltered")
+			
+			'Add demand for the current month.  Demand = SO req's
+			f.Intrinsic.String.Build("PERIOD{0}_DEMAND",V.Local.iColNum,V.Local.sColNameSecond)
+			f.Data.DataTable.AddColumn("dtAllTemp",v.Local.sColNameSecond,"FLOAT",0)
+			f.Data.DataTable.FillFromDictionary("dtAllTemp","dictOpenSOFiltered","PART",V.Local.sColNameSecond)
+			F.Data.Dictionary.Close("dictOpenSOFiltered")
+			F.Data.DataTable.Close("dtOpenSOFiltered")
+			
+			'Calculate the net for the month			
+			f.Intrinsic.String.Build("PERIOD{0}_REMAIN",V.Local.iColNum,V.Local.sColName)
+			F.Intrinsic.Control.If(V.Local.iCnt,=,0)
+				F.IntrinsiC.String.Build("IN_STOCK+PERIOD{1}_SUPPLY-PERIOD{1}_DEMAND",V.Local.iCnt,V.Local.iColNum,V.Local.sExpression)
+			F.Intrinsic.Control.Else
+				F.IntrinsiC.String.Build("PERIOD{0}_REMAIN+PERIOD{1}_SUPPLY-PERIOD{1}_DEMAND",V.Local.iCnt,V.Local.iColNum,V.Local.sExpression)
+			F.Intrinsic.Control.EndIf
+			f.Data.DataTable.AddExpressionColumn("dtAllTemp",v.Local.sColName,"FLOAT",v.Local.sExpression)
+			
+			'Add notes
+			f.Intrinsic.Math.Add(v.Local.iCnt,1,v.Local.iColNum)
+			f.Intrinsic.String.Build("PERIOD{0}_NOTES",V.Local.iColNum,V.Local.sColName)
+			F.Intrinsic.String.Build("FISCAL_YEAR='{0}' AND PERIOD='{1}'",V.DataTable.dtPeriods(V.Local.iCnt).Start_Year!FieldValTrim,v.DataTable.dtPeriods(v.Local.iCnt).Period!FieldValTrim,v.Local.sSQL)
+			f.Data.DataView.SetFilter("dtOrderNotes","dvOrderNotes",v.Local.sSQL)
+			f.Data.DataView.ToDataTable("dtOrderNotes","dvOrderNotes","dtOrderNotesFiltered")
+			f.Data.Dictionary.createfromdatatable("dictOrderNotesFiltered","dtOrderNotesFiltered","Part","Note")
+			F.Data.Dictionary.SetDefaultReturn("dictOrderNotesFiltered","")
+			f.Data.DataTable.AddColumn("dtAllTemp",v.Local.sColName,"string","")
+			f.Data.DataTable.FillFromDictionary("dtAllTemp","dictOrderNotesFiltered","Part",V.Local.sColName)
+			f.Data.Dictionary.Close("dictOrderNotesFiltered")
+			f.Data.DataTable.Close("dtOrderNotesFiltered")
+		f.Intrinsic.Control.Next(v.Local.iCnt)
+		
+		f.Data.DataView.Close("dtOrderNotes","dvOrderNotes")
+		f.Data.DataTable.Close("dtOrderNotes")
+		f.Data.DataView.Close("dtOpenSO","dvOpenSO")
+		f.Data.DataTable.Close("dtOpenSO")
+		f.Data.DataView.Close("dtOpenWO","dvOpenWO")
+		f.Data.DataTable.Close("dtOpenWO")
+		
+	
+		gui.F_Forecast.pbStatus.Value(30)
+		
+		gui.F_Forecast.pbStatus.Value(45)
+		
+		f.Data.DataTable.DeleteRow("dtAll")
+		f.Data.Datatable.acceptchanges("dtAll")
+		f.Data.DataTable.Merge("dtAllTemp","dtAll",True,2)
+		f.Data.DataTable.Close("dtAllTemp")
+		F.Intrinsic.Control.CallSub(loadGCAll)
+	
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.loadDTAll.End
+
+Program.Sub.loadGCAll.Start
+	F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	v.Local.sRet.Declare
+	v.Local.iCnt.Declare
+	v.Local.sColName.Declare
+	v.Local.sColNameSecond.Declare
+	v.Local.iColCnt.Declare
+	v.Local.bContains.Declare
+	v.Local.iRet.Declare
+	v.Local.iColNum.Declare
+	v.local.sYearTwoDigit.Declare
+	v.Local.sColCaption.Declare
+	v.Local.iProgress.Declare(long)
+	v.Local.sColTag.Declare(string)
+	v.Local.sMonthNo.Declare(string)
+	
+	f.Data.DataTable.Clone("dtAll","dtAllTemp",True)
+	f.Data.DataTable.DeleteRow("dtAllTemp")
+	gui.F_Forecast.GsGCForecast.AddGridviewFromDatatable("gvAllTemp","dtAllTemp")
+	gui.F_Forecast.GsGCForecast.MainView("gvAllTemp")
+	gui.F_Forecast.GsGCForecast.SuspendLayout()
+	f.Intrinsic.Control.If(v.Global.bScreenLoaded,=,False)	
+		gui.F_Forecast.GsGCForecast.AddGridViewFromDataTable("gvAll","dtAll")
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","MultiSelect",True)
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","OptionBehaviorEditable",True)
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","AllowSort",True)
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","AllowFilter",True)
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","OptionsDetailShowDetailTabs",False)
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","OptionsViewShowGroupPanel",True)
+		gui.F_Forecast.GsGCForecast.SetGridviewProperty("gvAll","EnableAppearanceOddRow",True)
+		gui.F_Forecast.GsGCForecast.SetGridViewProperty("gvAll","OptionsViewColumnAutoWidth",False)
+	
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ExtraDescription","Visible",False)
+	
+		'Static captions
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","Part","Caption","Part")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","Product_Line","Caption","PL")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","description","Caption","Description")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ExtraDescription","Caption","Ext Desc")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","IN_STOCK","Caption","In Stock")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","FORECAST","Caption","Forecast")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ON_HOLD","Caption","On Hold")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","AVAILABILITY","Caption","Availability")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","OPEN_ORDERS","Caption","Open Orders")
+		
+		gui.F_Forecast.GsGCForecast.GetColumnCount("gvAll",v.Local.iColCnt)
+		f.Intrinsic.Math.Sub(v.Local.iColCnt,1,v.Local.iColCnt)
+		f.Intrinsic.Control.For(v.Local.iCnt,0,v.Local.iColCnt,1)
+			gui.F_Forecast.GsGCForecast.GetColumnNameByIndex("gvAll",v.Local.iCnt,v.Local.sColName)
+			f.Intrinsic.String.Occurs(v.Local.sColName,"PERIOD",1,V.Local.iRet)
+			F.Intrinsic.Control.If(V.Local.iRet,>,0)
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"MinWidth","100")
+			F.Intrinsic.Control.EndIf
+			f.Intrinsic.String.Occurs(v.Local.sColName,"NOTES",2,V.Local.iRet)
+			F.Intrinsic.Control.If(V.Local.iRet,>,0)
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"AllowEdit",True)
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"ReadOnly",False)
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"CellBackColor","LightYellow")
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"MinWidth","50")
+			f.Intrinsic.Control.Else
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"AllowEdit",False)
+				gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"ReadOnly",True)
+				
+				f.Intrinsic.String.Occurs(v.Local.sColName,"WOS",2,V.Local.iRet)
+				F.Intrinsic.Control.If(V.Local.iRet,>,0)
+					gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"Visible",False)
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndIf
+			
+			gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"HeaderFontBold",True)
+			gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"HeaderHAlignment","Center")
+			f.Intrinsic.Control.SelectCase(v.Local.sColName)
+				f.Intrinsic.Control.caseany("Part","Description","ExtraDescription")
+					gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"CellHAlignment","Left")
+				f.Intrinsic.Control.CaseElse
+					gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",v.Local.sColName,"CellHAlignment","Center")
+			f.Intrinsic.Control.EndSelect
+		f.Intrinsic.Control.Next(v.Local.iCnt)
+		
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","PART","MinWidth","125")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","Product_Line","MinWidth","50")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","description","MinWidth","200")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ExtraDescription","MinWidth","200")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","IN_STOCK","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","FORECAST","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ON_HOLD","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","OPEN_ORDERS","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_2YRSPRIOR","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_1YRPRIOR","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_CURRENTYR","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ORDERS_CURRENTYR","MinWidth","100")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","AVAILABILITY","MinWidth","100")
+		
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","PART","Fixed","Left")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","Product_Line","Fixed","Left")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","description","Fixed","Left")
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ExtraDescription","Fixed","Left")
+		
+		v.Local.iCnt.Set(0)
+		
+		f.Intrinsic.Control.For(v.Local.iCnt,0,v.DataTable.dtPeriods.RowCount--,1)
+			'Set the column ordinal to use in the column name
+			f.Intrinsic.Math.Add(v.Local.iCnt,1,v.Local.iColNum)
+			
+			f.Intrinsic.String.Build("PERIOD{0}_SUPPLY",V.Local.iColNum,V.Local.sColName)
+			f.Intrinsic.String.Build("{0}Total",V.Local.sColName,v.Local.sColTag)
+			gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll",v.Local.sColName,v.Local.sColTag,"Sum","Total:","","n2")
+			
+			f.Intrinsic.String.Build("PERIOD{0}_DEMAND",V.Local.iColNum,V.Local.sColName)
+			f.Intrinsic.String.Build("{0}Total",V.Local.sColName,v.Local.sColTag)
+			gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll",v.Local.sColName,v.Local.sColTag,"Sum","Total:","","n2")
+			
+			f.Intrinsic.String.Build("PERIOD{0}_REMAIN",V.Local.iColNum,V.Local.sColName)
+			f.Intrinsic.String.Build("{0}Total",V.Local.sColName,v.Local.sColTag)
+			gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll",v.Local.sColName,v.Local.sColTag,"Sum","Total:","","n2")
+		f.Intrinsic.Control.Next(v.Local.iCnt)
+		
+		v.Local.sColTag.Set("SHIP_2YRSPRIORTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","SHIP_2YRSPRIOR",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("SHIP_1YRPRIORTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","SHIP_1YRPRIOR",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("SHIP_CURRENTYRTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","SHIP_CURRENTYR",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("ORDERS_CURRENTYRTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","ORDERS_CURRENTYR",v.Local.sColTag,"Sum","Total:","","n2")
+		
+		v.Local.sColTag.Set("ON_HOLDTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","ON_HOLD",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("OPEN_ORDERSTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","OPEN_ORDERS",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("IN_STOCKTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","IN_STOCK",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("FORECASTTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","FORECAST",v.Local.sColTag,"Sum","Total:","","n2")
+		v.Local.sColTag.Set("AVAILABILITYTotal")
+		gui.F_Forecast.GsGCForecast.AddSummaryItem("gvAll","AVAILABILITY",v.Local.sColTag,"Sum","Total:","","n2")
+	f.Intrinsic.Control.EndIf
+	
+	v.local.iProgress.Set(40)
+	gui.F_Forecast.pbStatus.Value(70)
+	'Dynamic captions 
+	v.Local.iCnt.Set(0)
+	f.Intrinsic.Control.For(v.Local.iCnt,0,v.DataTable.dtPeriods.RowCount--,1)
+		'Set the column ordinal to use in the column name
+		f.Intrinsic.Math.Add(v.Local.iCnt,1,v.Local.iColNum)
+		
+		'Format the month to 2 digits
+		f.Intrinsic.String.LPad(v.DataTable.dtPeriods(v.Local.iCnt).MONTHNO!FieldValTrim,"0",2,v.Local.sMonthNo)
+		
+		'Add supply for the current month
+		f.Intrinsic.String.Build("PERIOD{0}_SUPPLY",V.Local.iColNum,V.Local.sColName)
+		f.Intrinsic.String.Build("{0}_{1}",V.DataTable.dtPeriods(V.Local.iCnt).YEARNO!FieldValTrim,v.Local.sMonthNo,V.Local.sColCaption)
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",V.Local.sColName,"Caption",v.Local.sColCaption)
+		
+		'Add demand for the current month
+		f.Intrinsic.String.Build("PERIOD{0}_DEMAND",V.Local.iColNum,V.Local.sColNameSecond)
+		f.Intrinsic.String.Build("Demand_{0}",v.Local.sMonthNo,V.Local.sColCaption)
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",V.Local.sColNameSecond,"Caption",v.Local.sColCaption)
+		
+		'Calculate the net for the month
+		f.Intrinsic.String.Build("PERIOD{0}_REMAIN",V.Local.iColNum,V.Local.sColName)
+		f.Intrinsic.String.Build("Remain_{0}",v.Local.sMonthNo,V.Local.sColCaption)
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",V.Local.sColName,"Caption",v.Local.sColCaption)
+		
+		'Add notes
+		f.Intrinsic.String.Build("PERIOD{0}_NOTES",V.Local.iColNum,V.Local.sColName)
+		f.Intrinsic.String.Build("Notes {0}",v.Local.sMonthNo,V.Local.sColCaption)
+		gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll",V.Local.sColName,"Caption",v.Local.sColCaption)
+		
+		f.Intrinsic.Math.Add(v.Local.iProgress,1,v.Local.iProgress)
+		'gui.F_Forecast.pbStatus.Value(v.Local.iProgress)
+	f.Intrinsic.Control.Next(v.Local.iCnt)
+	
+	gui.F_Forecast.pbStatus.Value(85)
+	F.Intrinsic.String.Right(v.global.iTwoYearsPrior,2,v.local.sYearTwoDigit)
+	f.Intrinsic.String.Build("Ship FY {0}",v.local.sYearTwoDigit,V.Local.sColCaption)
+	gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_2YRSPRIOR","Caption",v.Local.sColCaption)
+	
+	F.Intrinsic.String.Right(v.global.iPreviousYear,2,v.local.sYearTwoDigit)
+	f.Intrinsic.String.Build("Ship FY {0}",v.local.sYearTwoDigit,V.Local.sColCaption)
+	gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_1YRPRIOR","Caption",v.Local.sColCaption)
+	
+	F.Intrinsic.String.Right(V.Screen.F_Forecast!ddlYear.Text,2,v.Local.sYearTwoDigit)
+	f.Intrinsic.String.Build("Ship FY {0}",v.Local.sYearTwoDigit,V.Local.sColCaption)
+	gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","SHIP_CURRENTYR","Caption",v.Local.sColCaption)
+	
+	f.Intrinsic.String.Build("Orders FY {0}",v.Local.sYearTwoDigit,V.Local.sColCaption)
+	gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","ORDERS_CURRENTYR","Caption",v.Local.sColCaption)
+	
+	gui.F_Forecast.GsGCForecast.SetColumnProperty("gvAll","IN_STOCK","DisplayCustomNumeric","#######0.####")
+
+	gui.F_Forecast.pbStatus.Value(100)
+	
+	gui.F_Forecast.GsGCForecast.ResumeLayout()
+	gui.F_Forecast.GsGCForecast.MainView("gvAll")
+	f.Data.DataTable.Close("dtAllTemp")
+	
+	v.Global.bScreenLoaded.Set(True)
+	
+	gui.F_Forecast.lblStatus.Visible(False)
+	gui.F_Forecast.pbStatus.Visible(False)
+	
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.loadGCAll.End
+
+Program.Sub.MenuClickRefresh.Start
+	F.Intrinsic.Control.Try
+	V.Local.sError.Declare
+	
+	F.Intrinsic.Control.CallSub(cmdRefresh_Click)
+	
+	F.Intrinsic.Control.Catch
+		F.Intrinsic.String.Build("Project: {0}{1}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}{1}{1}GAB Version: {5}",V.Ambient.ScriptPath,V.Ambient.Newline,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Ambient.GABVersion,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.End 
+	F.Intrinsic.Control.EndTry
+Program.Sub.MenuClickRefresh.End
+
+Program.Sub.MenuClickExport.Start
+	F.Intrinsic.Control.Try
+		V.Local.sError.Declare
+		
+		V.Local.sFileExport.Declare
+		V.Local.bExcel.Declare
+		V.Local.bFileLocked.Declare
+		V.Local.sMsg.Declare
+		V.Local.sControl.Declare
+		
+		V.Local.sControl.Set("GsGcForecast")
+	
+		F.Automation.MSExcel.CheckPresence(V.Local.bExcel)
+		F.Intrinsic.Control.If(V.Local.bExcel)
+			F.Intrinsic.String.Build("{0}\GCG_5638_{1}_Export.xlsx",V.Caller.LocalGssTempDir,V.Local.sControl,V.Local.sFileExport)
+			F.Intrinsic.File.IsFileLocked(V.Local.sFileExport,V.Local.bFileLocked)
+			F.Intrinsic.Control.If(V.Local.bFileLocked)
+				F.Intrinsic.String.Build("File is already open. Please close and export again.{0}File: {1}",V.Ambient.NewLine,V.Local.sFileExport,V.Local.sMsg)
+				F.Intrinsic.UI.Msgbox(V.Local.sMsg,"File In Use")
+			F.Intrinsic.Control.Else
+				gui.F_Forecast.[V.Local.sControl].Export(V.Local.sFileExport,"xlsx")
+				F.Intrinsic.Task.ShellExec(0,"",V.Local.sFileExport,"","",1)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Build("{0}\GCG_5638_{1}_Export.csv",V.Caller.LocalGssTempDir,V.Local.sControl,V.Local.sFileExport)
+			F.Intrinsic.File.IsFileLocked(V.Local.sFileExport,V.Local.bFileLocked)
+			F.Intrinsic.Control.If(V.Local.bFileLocked)
+				F.Intrinsic.String.Build("File is already open. Please close and export again.{0}File: {1}",V.Ambient.NewLine,V.Local.sFileExport,V.Local.sMsg)
+				F.Intrinsic.UI.Msgbox(V.Local.sMsg,"File In Use")
+			F.Intrinsic.Control.Else
+				gui.F_Forecast.[V.Local.sControl].Export(V.Local.sFileExport,"csv")
+			F.Intrinsic.Control.EndIf
+			F.Intrinsic.Task.ShellExec(0,"",V.Local.sFileExport,"","",1)
+		F.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.MenuClickExport.End
+
+Program.Sub.MenuClickResetColumns.Start
+	F.Intrinsic.Control.Try		
+		F.Global.Registry.AddValue(V.Caller.User,V.Caller.CompanyCode,"GVALL",5638,1000,False,"Serialize",False,0,-999.0,1/1/1980,12:00:00 AM,"")
+		
+		F.Intrinsic.Control.CallSub(cmdRefresh_Click)
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.MenuClickResetColumns.End
+
+Program.Sub.Serialize.Start
+	F.Intrinsic.Control.Try
+		V.Local.sSerialize.Declare
+		
+		gui.F_Forecast.GsGCForecast.Serialize("gvAll",V.Local.sSerialize)
+		F.Global.Registry.AddValue(V.Caller.User,V.Caller.CompanyCode,"GVALL",5638,1000,False,"Serialize",False,0,-999.0,1/1/1980,12:00:00 AM,V.Local.sSerialize)
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.Serialize.End
+
+Program.Sub.Deserialize.Start
+	F.Intrinsic.Control.Try
+		V.Local.sSerialize.Declare
+				
+		'Delete old registry records
+		F.Global.Registry.ReadValue(V.Caller.User,V.Caller.CompanyCode,"GVALL",5638,0,5,"",V.Local.sSerialize)
+		F.Intrinsic.Control.If(V.Local.sSerialize,<>,"")
+			F.ODBC.Connection!common.OpenConnection(V.Ambient.Ccon,V.Ambient.Cuser,V.Ambient.Cpass)
+			F.ODBC.Connection!common.Execute("Delete From Gs_Registry Where Reg_ID = 5638 And Seq < 1000;")
+			F.ODBC.Connection!common.Close
+		F.Intrinsic.Control.EndIf
+	
+		'gvAll
+		F.Global.Registry.ReadValue(V.Caller.User,V.Caller.CompanyCode,"GVALL",5638,1000,6,"",V.Local.sSerialize)
+		F.Intrinsic.Control.If(V.Local.sSerialize.Trim,<>,"")
+			gui.F_Forecast.GsGCForecast.Deserialize(V.Local.sSerialize)
+		F.Intrinsic.Control.EndIf
+	f.Intrinsic.Control.Catch
+		f.Intrinsic.Control.CallSub(ErrorMsg, CurrentSub, v.Ambient.CurrentSubroutine)
+	f.Intrinsic.Control.EndTry
+Program.Sub.Deserialize.End
